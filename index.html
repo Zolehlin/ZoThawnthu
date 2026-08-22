@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ZoThawnthu</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <nav>
+    <div class="logo"><span class="dot"></span>ZoThawnthu</div>
+  </nav>
+
+  <div class="tabs" id="tabs"></div>
+
+  <div class="container">
+    <div id="list"></div>
+    <div id="emptyState" class="empty-state" style="display:none;">
+      <p class="big">no stories here yet</p>
+      <p>check back soon</p>
+    </div>
+  </div>
+
+  <script src="config.js"></script>
+  <script type="module">
+    import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+    window.supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    window.dispatchEvent(new Event('supabase-ready'));
+  </script>
+  <script src="client.js"></script>
+  <script>
+    let allStories = [];
+    let activeCategory = 'All';
+
+    window.addEventListener('supabase-ready', loadStories);
+
+    async function loadStories() {
+      const { data: stories, error } = await supabase
+        .from('stories')
+        .select('id, title, category, content, created_at, story_likes(count), story_comments(count)')
+        .order('created_at', { ascending: false });
+
+      if (error || !stories) {
+        document.getElementById('emptyState').style.display = 'block';
+        return;
+      }
+      allStories = stories;
+      renderTabs();
+      renderList();
+    }
+
+    function renderTabs() {
+      const categories = ['All', ...new Set(allStories.map(s => s.category))];
+      const tabsEl = document.getElementById('tabs');
+      tabsEl.innerHTML = categories.map(c =>
+        `<div class="tab ${c === activeCategory ? 'active' : ''}" data-cat="${escapeHtml(c)}">${escapeHtml(c)}</div>`
+      ).join('');
+      tabsEl.querySelectorAll('.tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+          activeCategory = tab.dataset.cat;
+          renderTabs();
+          renderList();
+        });
+      });
+    }
+
+    function renderList() {
+      const list = document.getElementById('list');
+      const empty = document.getElementById('emptyState');
+      const filtered = activeCategory === 'All'
+        ? allStories
+        : allStories.filter(s => s.category === activeCategory);
+
+      if (filtered.length === 0) {
+        list.innerHTML = '';
+        empty.style.display = 'block';
+        return;
+      }
+      empty.style.display = 'none';
+
+      list.innerHTML = filtered.map(s => {
+        const likeCount = s.story_likes?.[0]?.count || 0;
+        const commentCount = s.story_comments?.[0]?.count || 0;
+        const excerpt = (s.content || '').slice(0, 160);
+        return `
+          <a class="story-card" href="story.html?id=${s.id}">
+            <span class="cat-tag">${escapeHtml(s.category)}</span>
+            <p class="title">${escapeHtml(s.title)}</p>
+            <p class="excerpt">${escapeHtml(excerpt)}</p>
+            <div class="stats">
+              <span>♥ ${likeCount}</span>
+              <span>💬 ${commentCount}</span>
+              <span>${timeAgo(s.created_at)}</span>
+            </div>
+          </a>
+        `;
+      }).join('');
+    }
+  </script>
+</body>
+</html>

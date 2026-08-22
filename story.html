@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ZoThawnthu</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <nav>
+    <a href="index.html" class="logo"><span class="dot"></span>ZoThawnthu</a>
+  </nav>
+
+  <div class="container">
+    <div class="read-header">
+      <span class="cat-tag" id="catTag"></span>
+      <h1 id="storyTitle"></h1>
+      <p class="meta" id="storyMeta"></p>
+    </div>
+
+    <div class="story-body" id="storyBody"></div>
+
+    <div class="actions-row">
+      <button class="like-btn" id="likeBtn">
+        <i>♥</i><span id="likeCount">0</span>
+      </button>
+    </div>
+
+    <hr class="divider">
+
+    <p class="comments-header" id="commentsHeader">comments</p>
+
+    <div class="comment-form">
+      <input type="text" id="nameInput" placeholder="your name (optional)" maxlength="40" />
+      <textarea id="textInput" placeholder="say something" rows="2" maxlength="500"></textarea>
+      <p class="form-err" id="formErr">write something first</p>
+      <button id="postBtn">post</button>
+    </div>
+
+    <div id="commentsList"></div>
+  </div>
+
+  <script src="config.js"></script>
+  <script type="module">
+    import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+    window.supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    window.dispatchEvent(new Event('supabase-ready'));
+  </script>
+  <script src="client.js"></script>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const storyId = params.get('id');
+    const clientId = getClientId();
+    let liked = false;
+
+    if (!storyId) {
+      document.body.innerHTML = '<div class="container"><div class="empty-state"><p class="big">no story specified</p></div></div>';
+    } else {
+      window.addEventListener('supabase-ready', load);
+    }
+
+    async function load() {
+      const { data: s, error } = await supabase
+        .from('stories')
+        .select('id, title, category, content, created_at')
+        .eq('id', storyId)
+        .single();
+
+      if (error || !s) {
+        document.body.innerHTML = '<div class="container"><div class="empty-state"><p class="big">story not found</p></div></div>';
+        return;
+      }
+
+      document.title = s.title + ' — ZoThawnthu';
+      document.getElementById('catTag').textContent = s.category;
+      document.getElementById('storyTitle').textContent = s.title;
+      document.getElementById('storyMeta').textContent = timeAgo(s.created_at);
+      document.getElementById('storyBody').textContent = s.content;
+
+      const { count: likeCount } = await supabase
+        .from('story_likes')
+        .select('*', { count: 'exact', head: true })
+        .eq('story_id', storyId);
+      document.getElementById('likeCount').textContent = likeCount || 0;
+
+      const { data: myLike } = await supabase
+        .from('story_likes')
+        .select('id')
+        .eq('story_id', storyId)
+        .eq('client_id', clientId)
+        .maybeSingle();
+      liked = !!myLike;
+      updateLikeBtn();
+
+      const { data: comments } = await supabase
+        .from('story_comments')
+        .select('id, name, text, created_at')
+        .eq('story_id', storyId)
+        .order('created_at', { ascending: false });
+
+      document.getElementById('commentsHeader').textContent =
+        (comments?.length || 0) + ' comment' + (comments?.length === 1 ? '' : 's');
+      renderComments(comments || []);
+    }
+
+    function updateLikeBtn() {
+      document.getElementById('likeBtn').classList.toggle('liked', liked);
+    }
+
+    function renderComments(comments) {
+      const list = document.getElementById('commentsList');
+      if (comments.length === 0) {
+        list.innerHTML = '<p style="color:var(--text-dim); font-size:14px;">no comments yet — be the first</p>';
+        return;
+      }
+      list.innerHTML = comments.map(c => `
+        <div class="comment">
+          <div class="who">
+            <div class="avatar">${initials(c.name)}</div>
+            <span class="name">${escapeHtml(c.name)}</span>
+            <span class="time">${timeAgo(c.created_at)}</span>
+          </div>
+          <p class="text">${escapeHtml(c.text)}</p>
+        </div>
+      `).join('');
+    }
+
+    document.getElementById('likeBtn').addEventListener('click', async () => {
+      if (liked) {
+        await supabase.from('story_likes').delete().eq('story_id', storyId).eq('client_id', clientId);
+      } else {
+        await supabase.from('story_likes').insert({ story_id: storyId, client_id: clientId });
+      }
+      liked = !liked;
+      updateLikeBtn();
+      const { count } = await supabase
+        .from('story_likes')
+        .select('*', { count: 'exact', head: true })
+        .eq('story_id', storyId);
+      document.getElementById('likeCount').textContent = count || 0;
+    });
+
+    document.getElementById('postBtn').addEventListener('click', async () => {
+      const name = document.getElementById('nameInput').value.trim();
+      const text = document.getElementById('textInput').value.trim();
+      const err = document.getElementById('formErr');
+      if (!text) {
+        err.style.display = 'block';
+        return;
+      }
+      err.style.display = 'none';
+
+      const { error } = await supabase.from('story_comments').insert({
+        story_id: storyId,
+        name: name || 'Anonymous',
+        text
+      });
+      if (!error) {
+        document.getElementById('textInput').value = '';
+        load();
+      }
+    });
+
+    document.getElementById('textInput').addEventListener('input', () => {
+      if (document.getElementById('textInput').value.trim()) {
+        document.getElementById('formErr').style.display = 'none';
+      }
+    });
+  </script>
+</body>
+</html>
