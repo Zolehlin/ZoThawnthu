@@ -63,3 +63,35 @@
       status.style.display = 'none';
 
       if (!title) return showStatus('enter a title', 'err');
+      if (!category) return showStatus('enter a category', 'err');
+      if (!content) return showStatus('write the story first', 'err');
+      if (!ready) return showStatus('still loading, try again in a second', 'err');
+
+      btn.disabled = true;
+
+      const { error } = await supabase.from('stories').insert({
+        title,
+        category,
+        content,
+        author_name: authorName || null,
+        status: 'pending'
+      });
+
+      btn.disabled = false;
+
+      if (error) {
+        return showStatus(error.message, 'err');
+      }
+
+      document.getElementById('formPanel').style.display = 'none';
+      document.getElementById('successPanel').style.display = 'block';
+
+      function showStatus(msg, type) {
+        status.textContent = msg;
+        status.className = 'status-msg ' + type;
+        status.style.display = 'block';
+      }
+    });
+  </script>
+</body>
+</html>
