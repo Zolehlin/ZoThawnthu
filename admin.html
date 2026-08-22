@@ -27,7 +27,7 @@
   </div>
 
   <div class="admin-panel" id="postPanel" style="display:none;">
-    <h1>post a story</h1>
+    <h1 id="formTitle">post a story</h1>
     <p class="sub">signed in as <span id="whoAmI"></span></p>
 
     <div class="field">
@@ -45,7 +45,8 @@
     </div>
 
     <button class="submit-btn" id="postBtn">publish</button>
-    <p class="status-msg" id="statusMsg"></p>
+    <p class="status-msg" id="statusMsg" style="cursor:default;"></p>
+    <a href="#" id="cancelEditLink" style="display:none; text-align:center; margin-top:10px; font-size:12px; color:var(--text-dim);">cancel edit</a>
     <a href="#" class="signout-link" id="signOutLink">sign out</a>
   </div>
 
@@ -118,6 +119,34 @@
         categories.map(c => `<option value="${c.replace(/"/g, '')}"></option>`).join('');
     }
 
+    let editingId = null;
+
+    function enterEditMode(story) {
+      editingId = story.id;
+      document.getElementById('formTitle').textContent = 'edit story';
+      document.getElementById('postBtn').textContent = 'save changes';
+      document.getElementById('cancelEditLink').style.display = 'block';
+      document.getElementById('title').value = story.title;
+      document.getElementById('category').value = story.category;
+      document.getElementById('content').value = story.content;
+      document.getElementById('postPanel').scrollIntoView({ behavior: 'smooth' });
+    }
+
+    function exitEditMode() {
+      editingId = null;
+      document.getElementById('formTitle').textContent = 'post a story';
+      document.getElementById('postBtn').textContent = 'publish';
+      document.getElementById('cancelEditLink').style.display = 'none';
+      document.getElementById('title').value = '';
+      document.getElementById('category').value = '';
+      document.getElementById('content').value = '';
+    }
+
+    document.getElementById('cancelEditLink').addEventListener('click', (e) => {
+      e.preventDefault();
+      exitEditMode();
+    });
+
     document.getElementById('postBtn').addEventListener('click', async () => {
       const title = document.getElementById('title').value.trim();
       const category = document.getElementById('category').value.trim();
@@ -132,6 +161,24 @@
       if (!content) return showStatus('write the story first', 'err');
 
       btn.disabled = true;
+
+      if (editingId) {
+        const { error } = await supabase
+          .from('stories')
+          .update({ title, category, content })
+          .eq('id', editingId);
+
+        btn.disabled = false;
+
+        if (error) {
+          return showStatus(error.message, 'err');
+        }
+
+        showStatus('saved — redirecting…', 'ok');
+        const goToId = editingId;
+        setTimeout(() => location.href = 'story.html?id=' + goToId, 800);
+        return;
+      }
 
       const { data: row, error } = await supabase
         .from('stories')
@@ -159,7 +206,7 @@
       const list = document.getElementById('storyList');
       const { data: stories, error } = await supabase
         .from('stories')
-        .select('id, title, category, created_at')
+        .select('id, title, category, content, created_at')
         .order('created_at', { ascending: false });
 
       if (error || !stories || stories.length === 0) {
@@ -168,11 +215,21 @@
       }
 
       list.innerHTML = stories.map(s => `
-        <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 0; border-bottom:1px solid var(--border);">
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; padding:12px 0; border-bottom:1px solid var(--border);">
           <span style="font-size:14px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${s.title.replace(/</g, '&lt;')} <span style="color:var(--text-dim); font-size:12px;">(${s.category.replace(/</g, '&lt;')})</span></span>
-          <button class="delete-btn" data-id="${s.id}" data-title="${s.title.replace(/"/g, '')}">delete</button>
+          <span style="display:flex; gap:8px; flex-shrink:0;">
+            <button class="edit-btn" data-id="${s.id}" style="background:none; border:1px solid var(--violet); color:var(--violet); padding:6px 14px; border-radius:999px; font-size:12px; cursor:pointer;">edit</button>
+            <button class="delete-btn" data-id="${s.id}" data-title="${s.title.replace(/"/g, '')}">delete</button>
+          </span>
         </div>
       `).join('');
+
+      list.querySelectorAll('.edit-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const story = stories.find(s => s.id === btn.dataset.id);
+          if (story) enterEditMode(story);
+        });
+      });
 
       list.querySelectorAll('.delete-btn').forEach(btn => {
         btn.addEventListener('click', async () => {
@@ -188,6 +245,7 @@
             btn.textContent = 'delete';
             return;
           }
+          if (editingId === btn.dataset.id) exitEditMode();
           loadStoryList();
         });
       });
