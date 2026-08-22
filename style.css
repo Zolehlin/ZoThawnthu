@@ -326,3 +326,12 @@ hr.divider { border: none; border-top: 1px solid var(--border); margin: 8px 0 24
   font-size: 12px;
   cursor: pointer;
 }
+.nav-link {
+  font-size: 13px;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  padding: 8px 16px;
+  border-radius: 999px;
+  transition: border-color 0.2s, color 0.2s;
+}
+.nav-link:hover { color: var(--text); border-color: var(--violet); }
